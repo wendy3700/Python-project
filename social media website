@@ -1,0 +1,125 @@
+import pandas as pd
+import pymongo as pym
+import numpy as np
+import warnings
+import matplotlib
+import matplotlib.pyplot as plt
+import seaborn as sns
+import researchpy as rps
+import os
+import random
+import warnings
+from matplotlib.colors import ListedColormap
+import joblib
+
+
+# Load data into python
+try:
+    client = pym.MongoClient('172.28.8.65', 27017)
+    client.server_info()
+except:
+    print('Something went wrong connecting to Mongo')
+
+db = client["project"]
+customers = db.customers
+
+# Checking for data leakage
+val = list(customers.aggregate([
+    {"$group": {"_id": "$net_user",
+                "uniqueIds": {"$addToSet": "$net_user"},
+                "uniques": {"$sum": 1}
+                }
+    },
+    {"$match": {"uniques": {"$gt": 1}}}]))
+print(len(val))
+
+# Construct our first dataframe
+my_columns = ['age', 'male', 'friend_cnt', 'avg_friend_age', 'avg_friend_male',
+                              'friend_country_cnt', 'subscriber_friend_cnt', 'songsListened', 'lovedTracks', 'posts',
+                              'playlists', 'shouts', 'delta1_friend_cnt', 'delta1_avg_friend_age',
+                              'delta1_avg_friend_male', 'delta1_friend_country_cnt', 'delta1_subscriber_friend_cnt',
+                              'delta1_songsListened', 'delta1_lovedTracks', 'delta1_posts', 'delta1_playlists', 'delta1_shouts',
+                              'delta1_good_country', 'adopter', 'tenure', 'good_country', 'delta2_friend_cnt',
+                              'delta2_avg_friend_age', 'delta2_avg_friend_male', 'delta2_friend_country_cnt',
+                              'delta2_subscriber_friend_cnt', 'delta2_songsListened', 'delta2_lovedTracks', 'delta2_posts',
+                              'delta2_playlists', 'delta2_shouts', 'delta2_good_country']
+
+my_data = []
+my_index = []
+for f in customers.find({'friends': 1}):
+    print(f)
+for c in customers.find({}):
+    if c.get('male') is None:
+        gender = np.nan
+    else:
+        gender = c.get('male')
+    if c.get('age') is None:
+        age = np.nan
+    else:
+        age = c.get('age')
+    if c.get('good_country') is None:
+        country = np.nan
+    else:
+        country = c.get('good_country')
+    my_list = [age, gender,c['friends']['friend_cnt'], c['friends']['avg_friend_age'], c['friends']['avg_friend_male'],
+               c['friends']['friend_country_cnt'], c['friends']['subscriber_friend_cnt'], c.get('songsListened'), c.get('lovedTracks'),
+               c.get('posts'), c.get('playlists'), c.get('shouts'), c['delta1']['delta1_friend_cnt'], c['delta1']['delta1_avg_friend_age'],
+               c['delta1']['delta1_avg_friend_male'], c['delta1']['delta1_friend_country_cnt'], c['delta1']['delta1_subscriber_friend_cnt'],
+               c['delta1']['delta1_songsListened'], c['delta1']['delta1_lovedTracks'], c['delta1']['delta1_posts'], c['delta1']['delta1_playlists'],
+               c['delta1']['delta1_shouts'], c['delta1']['delta1_good_country'], c.get('adopter') , c.get('tenure'), country,c['delta2']['delta2_friend_cnt'],
+               c['delta2']['delta2_avg_friend_age'], c['delta2']['delta2_avg_friend_male'], c['delta2']['delta2_friend_country_cnt'],
+               c['delta2']['delta2_subscriber_friend_cnt'], c['delta2']['delta2_songsListened'], c['delta2']['delta2_lovedTracks'],
+               c['delta2']['delta2_posts'], c['delta2']['delta2_playlists'],c['delta2']['delta2_shouts'], c['delta2']['delta2_good_country']]
+    my_data.append(my_list)
+    my_index.append(c.get('net_user'))
+my_df = pd.DataFrame(my_data, index=my_index, columns=my_columns)
+
+print(my_df)
+print(my_df.dtypes)
+
+print(my_df.isnull().sum())
+
+# Changing usable features into 0
+my_df['shouts'].fillna(0, inplace=True)
+my_df['tenure'].fillna(0, inplace=True)
+
+
+print(my_df.isnull().sum())
+
+# Changing all the "NULL" into zero
+my_col = ['age', 'male', 'friend_cnt', 'avg_friend_age', 'avg_friend_male',
+                              'friend_country_cnt', 'subscriber_friend_cnt', 'songsListened', 'lovedTracks', 'posts',
+                              'playlists', 'shouts', 'delta1_friend_cnt', 'delta1_avg_friend_age',
+                              'delta1_avg_friend_male', 'delta1_friend_country_cnt', 'delta1_subscriber_friend_cnt',
+                              'delta1_songsListened', 'delta1_lovedTracks', 'delta1_posts', 'delta1_playlists', 'delta1_shouts',
+                              'delta1_good_country', 'adopter', 'tenure', 'good_country', 'delta2_friend_cnt',
+                              'delta2_avg_friend_age', 'delta2_avg_friend_male', 'delta2_friend_country_cnt',
+                              'delta2_subscriber_friend_cnt', 'delta2_songsListened', 'delta2_lovedTracks', 'delta2_posts',
+                              'delta2_playlists', 'delta2_shouts', 'delta2_good_country']
+for c in my_col:
+    my_df[c] = my_df[c].replace(to_replace='NULL', value=0)
+
+pd.set_option('display.max_columns', 100)
+pd.set_option('display.max_rows', 100)
+
+print(my_df)
+print(my_df.dtypes)
+
+# dataframe dropping columns : my_df1
+my_df1 = my_df.drop(columns=['age', 'male', 'good_country'])
+print(my_df1.isnull().sum())
+print(my_df1.dtypes)
+
+# dataframe dropping rows: my_df2
+my_df2 = my_df.dropna(axis=0)
+print(my_df2.isnull().sum())
+print(my_df2.dtypes)
+
+# We finally chose the my_df1 for our second prediction
+
+
+# Defining confusion matrix
+# This project is about predicting customer subscription behavior in a technology company's website
+# # For the first prediction: using past customer data to predict the current subscribed customers
+# # After calculations, LogisticRegression modeling is the best prediction model so here is the example of how the
+# # model predicted the result
