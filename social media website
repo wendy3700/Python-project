@@ -123,3 +123,577 @@ print(my_df2.dtypes)
 # # For the first prediction: using past customer data to predict the current subscribed customers
 # # After calculations, LogisticRegression modeling is the best prediction model so here is the example of how the
 # # model predicted the result
+def confusion(test, predict, title, labels, categories):
+    pts, xe, ye = np.histogram2d(test, predict, bins=categories)
+    pd_pts = pd.DataFrame(pts.astype(int), index=labels, columns=labels)
+    hm = sns.heatmap(pd_pts, annot=True, fmt="d")
+    hm.axes.set_title(title, fontsize=20)
+    hm.axes.set_xlabel('True Target', fontsize=18)
+    hm.axes.set_ylabel('Predicted Label', fontsize=18)
+
+for i in range(3):
+# loop for three times, note that KNN can only contain max five features in a time, so we randomly select features each time
+# The results are contained in the word file
+    my_features = ['delta1_friend_cnt', 'delta1_avg_friend_age',
+                   'delta1_avg_friend_male', 'delta1_friend_country_cnt', 'delta1_subscriber_friend_cnt',
+                   'delta1_songsListened', 'delta1_lovedTracks', 'delta1_posts', 'delta1_playlists', 'delta1_shouts',
+                   'delta1_good_country']
+# include all the features in delta 1
+    my_feature_names = random.sample(my_features, 5)
+    my_features = my_df[my_feature_names].values
+    my_targets = my_df['adopter'].astype(int).to_numpy()
+# include adopter in current as our target
+    from sklearn.model_selection import train_test_split
+# Split testing and training data
+    f_train, f_test, t_train, t_test = train_test_split(my_features, my_targets,
+                                                    test_size=0.25, stratify=my_targets, random_state=77)
+
+    from sklearn.preprocessing import StandardScaler
+# Standardized to make predictions about probabilities of adopters
+    sc_train = StandardScaler().fit(f_train)
+    f_train_sc = sc_train.transform(f_train)
+    sc_test = StandardScaler().fit(f_test)
+    f_test_sc = sc_test.transform(f_test)
+
+    from sklearn import neighbors
+
+    num_neighbors = 51
+# Set our num_neighbors to a medium level number
+    knn = neighbors.KNeighborsClassifier(n_neighbors=num_neighbors, metric='euclidean', weights='uniform')
+
+    knn.fit(f_train_sc, t_train)
+# score our original model for KNN
+    score_test = 100 * knn.score(f_test_sc, t_test)
+    print(f'KNN ({num_neighbors} neighbors) prediction accuracy with test data = {score_test:.1f}%')
+    score_train = 100 * knn.score(f_train_sc, t_train)
+    print(f'KNN ({num_neighbors} neighbors) prediction accuracy with train data = {score_train:.1f}%')
+# Three loops the training and testing scores are all about 93%
+
+    from sklearn.metrics import classification_report
+    target_names = {"FREE": 0, "PREMIUM": 1}
+
+# Generate predictions
+    predicted_labels = knn.predict(f_test_sc)
+    print(classification_report(t_test, predicted_labels, target_names=target_names))
+# Display the confusion matrix
+    from sklearn.metrics import confusion_matrix
+    print(confusion_matrix(t_test, predicted_labels))
+
+# Call confusion matrix plotting routine
+    confusion(t_test.flatten(), predicted_labels, f'KNN-({num_neighbors}) Model', target_names, 2)
+    plt.savefig(os.getcwd() + '\\confusion'+ str(i) + '.png')
+    plt.close('all')
+# the confusion matix just contains too many zeros, which makes the original KNN model useless!!
+
+# Oversampling
+    from imblearn.over_sampling import SMOTE
+
+    over_sampler = SMOTE(random_state=12)
+    smote_feature, smote_target = over_sampler.fit_resample(f_train, t_train)
+
+    from sklearn.preprocessing import StandardScaler
+    sc_train = StandardScaler().fit(smote_feature)
+    f_train_sc = sc_train.transform(smote_feature)
+# score our over-sampler model for KNN
+    my_classifier = neighbors.KNeighborsClassifier(n_neighbors=num_neighbors, metric='euclidean', weights='uniform')
+    smote_model = my_classifier.fit(f_train_sc, smote_target)
+    score_test = 100 * smote_model.score(f_test_sc, t_test)
+    print(f'KNN prediction accuracy using SMOTE over-sampler = {score_test:.1f}%.')
+    score_train = 100 * smote_model.score(f_train_sc, smote_target)
+    print(f'KNN prediction accuracy using SMOTE over-sampler = {score_train:.1f}%.')
+
+    predicted = smote_model.predict(f_test_sc)
+    print(confusion_matrix(t_test.reshape(t_test.shape[0]), predicted))
+    print(t_test.flatten())
+    print(predicted)
+
+# Call confusion matrix plotting routine
+    confusion(t_test.flatten(), predicted, f'KNN-({num_neighbors}) Model-SMOTE', target_names, 2)
+    plt.savefig(os.getcwd() + '\\confusionSMOTE' + str(i) + '.png')
+    plt.close('all')
+
+# Undersampling
+    from imblearn.under_sampling import NearMiss
+
+    under_sampler = NearMiss()
+    nm_feature, nm_target = under_sampler.fit_resample(f_train, t_train)
+
+    sc_train = StandardScaler().fit(nm_feature)
+    f_train_sc = sc_train.transform(nm_feature)
+
+# score our under-sampler model for KNN
+    my_classifier = neighbors.KNeighborsClassifier(n_neighbors=num_neighbors, metric='euclidean', weights='uniform')
+    nm_model = my_classifier.fit(f_train_sc, nm_target)
+    score_test = 100 * nm_model.score(f_test_sc, t_test)
+    print(f'KNN prediction accuracy using under-sampler (Near Miss) = {score_test:.1f}%.')
+    score_train = 100 * nm_model.score(f_train_sc, nm_target)
+    print(f'KNN prediction accuracy using under-sampler (Near Miss) = {score_train:.1f}%.')
+
+    print(t_test.flatten())
+    print(predicted)
+
+# Call confusion matrix plotting routine
+    confusion(t_test.flatten(), predicted, f'KNN-({num_neighbors}) Model-NearMiss', target_names, 2)
+    plt.savefig(os.getcwd() + '\\confusionNM' + str(i) + '.png')
+    plt.close('all')
+
+# Logistic regression for my_df
+# Since our target contains only "0" and "1", we can only use logistic regression
+my_features = my_df[['delta1_friend_cnt', 'delta1_avg_friend_age',
+                              'delta1_avg_friend_male', 'delta1_friend_country_cnt', 'delta1_subscriber_friend_cnt',
+                              'delta1_songsListened', 'delta1_lovedTracks', 'delta1_posts', 'delta1_playlists', 'delta1_shouts',
+                              'delta1_good_country']].values
+my_targets = my_df['adopter'].astype(int).to_numpy()
+
+# Splitting training and testing data
+from sklearn.model_selection import train_test_split
+
+train_features, test_features, train_targets, test_targets = train_test_split(my_features, my_targets, test_size=0.25,
+                                                                              stratify=my_targets, random_state=77)
+
+from sklearn.linear_model import LogisticRegression
+
+# Since each time we have so many samples for features, we ran different times parameters
+estimator = LogisticRegression(C=1, random_state=92, solver='liblinear')
+# estimator = LogisticRegression(C=500000, random_state=92, solver='liblinear')
+
+lr_model = estimator.fit(train_features, train_targets)
+predicted = lr_model.predict(test_features)
+
+# Calculate the original logistic score
+score_test= 100.0 * lr_model.score(test_features, test_targets)
+print(f'Logistic Regression Model Score = {score_test:5.1f}%')
+
+score_train = 100.0 * lr_model.score(train_features, train_targets)
+print(f'Logistic Regression Model Score = {score_train:5.1f}%')
+# Logistic Regression Model Score =  93.2%
+# Logistic Regression Model Score =  93.2%
+
+from sklearn.metrics import confusion_matrix
+
+print(confusion_matrix(test_targets.reshape(test_targets.shape[0]), predicted))
+
+
+def confusion(test, predict, title, labels, path, size=2):
+
+    pts, xe, ye = np.histogram2d(test, predict, bins=size)
+
+    pd_pts = pd.DataFrame(pts.astype(int), index=labels, columns=labels)
+
+    plt.close('all')
+    hm = sns.heatmap(pd_pts, annot=True, fmt="d")
+    hm.axes.set_title(title, fontsize=20)
+    hm.axes.set_xlabel('Actual (True) Target', fontsize=18)
+    hm.axes.set_ylabel('Predicted Label', fontsize=18)
+    plt.savefig(path)
+    plt.close('all')
+    del hm
+
+# Call confusion matrix
+confusion(test_targets.reshape(test_targets.shape[0]), predicted,
+          f'Predicting Adopter', ['FREE', 'PREMIUM'],
+          os.getcwd() + '\\Confusion_logistic.png')
+
+#oversampling
+from imblearn.over_sampling import SMOTE
+
+over_sampler = SMOTE(random_state=12)
+smote_feature, smote_target = over_sampler.fit_resample(train_features, train_targets)
+my_classifier = LogisticRegression(C=1, random_state=92, solver='liblinear')
+# my_classifier = LogisticRegression(C=500000, random_state=92, solver='liblinear')
+smote_model = my_classifier.fit(smote_feature, smote_target)
+
+# Calculate over-sampler score
+score_test = 100 * smote_model.score(test_features, test_targets)
+print(f'Logistic regression prediction accuracy using SMOTE over-sampler = {score_test:.1f}%.')
+score_train = 100 * smote_model.score(train_features, train_targets)
+print(f'Logistic regression prediction accuracy using SMOTE over-sampler = {score_train:.1f}%.')
+# Logistic regression prediction accuracy using SMOTE over-sampler = 81.6%.
+# Logistic regression prediction accuracy using SMOTE over-sampler = 81.7%.
+
+predicted = smote_model.predict(test_features)
+print(confusion_matrix(test_targets.reshape(test_targets.shape[0]), predicted))
+
+# Call confusion matrix
+confusion(test_targets.reshape(test_targets.shape[0]), predicted,
+          f'Predicting Adopters', ['FREE', 'PREMIUM'],
+          os.getcwd() + '\\ConfusionLogisticSMOTE.png')
+
+# Under-sampling
+from imblearn.under_sampling import NearMiss
+under_sampler = NearMiss()
+nm_feature, nm_target = under_sampler.fit_resample(train_features, train_targets)
+
+my_classifier = LogisticRegression(C=1, random_state=92, solver='liblinear')
+# my_classifier = LogisticRegression(C=500000, random_state=92, solver='liblinear')
+nm_model = my_classifier.fit(nm_feature, nm_target)
+
+# Calculate under-sampler score
+score_test = 100 * nm_model.score(test_features, test_targets)
+print(f'Logistic regression prediction accuracy using under-sampler (Near Miss) = {score_test:.1f}%.')
+score_train = 100 * nm_model.score(train_features, train_targets)
+print(f'Logistic regression prediction accuracy using under-sampler (Near Miss) = {score_train:.1f}%.')
+# Logistic regression prediction accuracy using under-sampler (Near Miss) = 74.8%.
+# Logistic regression prediction accuracy using under-sampler (Near Miss) = 75.0%.
+
+predicted = nm_model.predict(test_features)
+print(confusion_matrix(test_targets.reshape(test_targets.shape[0]), predicted))
+# Call confusion matrix
+confusion(test_targets.reshape(test_targets.shape[0]), predicted,
+          f'Predicting Adopters', ['FREE', 'PREMIUM'],
+          os.getcwd() + '//ConfusionLogisticNM.png')
+
+# Since Logistic regression is our best model for the first prediction
+# Let's fine tune our model using the GridSearchCV utility to see which hyper-parameters work best with these data.
+from sklearn.model_selection import GridSearchCV
+from sklearn.linear_model import LogisticRegression
+# Let's define the hyper-parameters that GridSearchCV want to cycle through.
+hyper_parameters = {"C": [1, 10000, 50000, 100000], 'fit_intercept': [True, False], 'max_iter': [1000]}
+grid_search = GridSearchCV(LogisticRegression(), hyper_parameters)
+gs_model = grid_search.fit(train_features, train_targets)
+print(gs_model.best_params_)
+
+score_test = 100 * gs_model.score(test_features, test_targets)
+print(f'Logistic Regression with these hyper-parameters ({gs_model.best_params_}) had a prediction '
+      f'accuracy in the unseen testing data = {score_test:.1f}%.')
+# Logistic Regression with these hyper-parameters ({'C': 100000, 'fit_intercept': True, 'max_iter': 1000}) had a prediction accuracy in the unseen testing data = 93.2%.
+score_train = 100 * gs_model.score(train_features, train_targets)
+print(f'Logistic Regression with these hyper-parameters ({gs_model.best_params_}) had a prediction '
+      f'accuracy in the unseen testing data = {score_train:.1f}%.')
+# Logistic Regression with these hyper-parameters ({'C': 100000, 'fit_intercept': True, 'max_iter': 1000}) had a prediction accuracy in the unseen testing data = 75.0%.
+
+# So, overall, the original logistic model is still the best model !!!!
+
+# Decision Tree
+from sklearn.model_selection import train_test_split
+f_data = my_df[['delta1_avg_friend_age','delta1_avg_friend_male', 'delta1_friend_country_cnt', 'delta1_subscriber_friend_cnt',
+          'delta1_songsListened', 'delta1_lovedTracks', 'delta1_posts', 'delta1_playlists', 'delta1_shouts','delta1_good_country']].values
+
+t_data = my_df['adopter'].to_numpy().reshape(my_df.shape[0], 1)
+
+f_train, f_test, t_train, t_test = train_test_split(f_data, t_data, test_size=0.25, stratify=t_data, random_state=77)
+
+from sklearn.tree import DecisionTreeClassifier
+
+dtr_estimator = DecisionTreeClassifier(min_samples_leaf=5, min_samples_split=5, max_depth=10)
+# dtr_estimator = DecisionTreeClassifier(min_samples_leaf=5, min_samples_split=5, max_depth=50000)
+
+# Calculate the original model training and testing data
+trained_dt_model = dtr_estimator.fit(f_train, t_train)
+print('Score = {:,.1%}'.format(trained_dt_model.score(f_test, t_test)))
+print('Score = {:,.1%}'.format(trained_dt_model.score(f_train, t_train)))
+# Score = 93.0%
+# Score = 93.6%
+
+predicted = trained_dt_model.predict(f_test)
+from sklearn.metrics import confusion_matrix
+print(confusion_matrix(t_test.reshape(t_test.shape[0]), predicted))
+
+# Call confusion matrix
+confusion(t_test.reshape(t_test.shape[0]), predicted,
+          f'Predicting Adopters', ['FREE', 'PREMIUM'],
+          os.getcwd() + '//Decisiontree.png')
+
+# over sampler
+from imblearn.over_sampling import SMOTE
+
+over_sampler = SMOTE(random_state=12)
+smote_feature, smote_target = over_sampler.fit_resample(f_train, t_train)
+my_classifier = DecisionTreeClassifier(min_samples_leaf=5, min_samples_split=5, max_depth=10)
+# my_classifier = DecisionTreeClassifier(min_samples_leaf=5, min_samples_split=5, max_depth=50000)
+smote_model = my_classifier.fit(smote_feature, smote_target)
+
+# Calculate over-sampler score
+score_test = 100 * smote_model.score(f_test, t_test)
+print(f'Decision tree prediction accuracy using SMOTE over-sampler = {score_test:.1f}%.')
+score_train = 100 * smote_model.score(smote_feature, smote_target)
+print(f'Decision tree prediction accuracy using SMOTE over-sampler = {score_train:.1f}%.')
+# Decision tree prediction accuracy using SMOTE over-sampler = 81.3%.
+# Decision tree prediction accuracy using SMOTE over-sampler = 77.4%.
+
+predicted = smote_model.predict(f_test)
+print(confusion_matrix(t_test.reshape(t_test.shape[0]), predicted))
+
+# Call confusion matrix
+confusion(t_test.reshape(t_test.shape[0]), predicted,
+          f'Predicting Adopters', ['FREE', 'PREMIUM'],
+          os.getcwd() + '\\DecisiontreeSMOTE.png')
+
+
+# Under-sampler
+from imblearn.under_sampling import NearMiss
+under_sampler = NearMiss()
+nm_feature, nm_target = under_sampler.fit_resample(f_train, t_train)
+
+my_classifier = DecisionTreeClassifier(min_samples_leaf=5, min_samples_split=5, max_depth=10)
+# my_classifier = DecisionTreeClassifier(min_samples_leaf=5, min_samples_split=5, max_depth=50000)
+nm_model = my_classifier.fit(nm_feature, nm_target)
+
+# Calculate under-sampler score
+score_test = 100 * nm_model.score(f_test, t_test)
+print(f'Decision tree prediction accuracy using under-sampler (Near Miss) = {score_test:.1f}%.')
+score_train = 100 * nm_model.score(nm_feature, nm_target)
+print(f'Decision tree prediction accuracy using under-sampler (Near Miss) = {score_train:.1f}%.')
+# Decision tree prediction accuracy using under-sampler (Near Miss) = 61.1%.
+# Decision tree prediction accuracy using under-sampler (Near Miss) = 88.4%.
+
+predicted = nm_model.predict(f_test)
+print(confusion_matrix(t_test.reshape(t_test.shape[0]), predicted))
+
+# Call confusion matrix
+confusion(t_test.reshape(t_test.shape[0]), predicted,
+          f'Predicting Adopters', ['FREE', 'PREMIUM'],
+          os.getcwd() + '//DecisiontreeNM.png')
+
+
+# Random forest
+my_features = my_df[['delta1_friend_cnt', 'delta1_avg_friend_age',
+                              'delta1_avg_friend_male', 'delta1_friend_country_cnt', 'delta1_subscriber_friend_cnt',
+                              'delta1_songsListened', 'delta1_lovedTracks', 'delta1_posts', 'delta1_playlists', 'delta1_shouts',
+                              'delta1_good_country']].values
+my_targets = my_df['adopter'].astype(int).to_numpy()
+
+from sklearn.model_selection import train_test_split
+train_features, test_features, train_targets, test_targets = train_test_split(my_features, my_targets,
+                                                                              test_size=0.25, stratify=my_targets, random_state=77)
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import confusion_matrix
+
+hyper_params = {'bootstrap': True, 'max_samples': 600, 'oob_score': True, 'max_features': 'auto',
+                'criterion': 'gini', 'n_estimators': 1000, 'random_state': 42}
+# hyper_params = {'bootstrap': True, 'max_samples': 50000, 'oob_score': True, 'max_features': 'auto',
+#                 'criterion': 'gini', 'n_estimators': 1000, 'random_state': 42}
+
+my_classifier = RandomForestClassifier(**hyper_params)
+
+# Score the original random forest model
+rf_model = my_classifier.fit(train_features, train_targets)
+score_test = 100 * rf_model.score(test_features, test_targets)
+print(f'Random forest prediction accuracy with testing data = {score_test:.1f}%.')
+score_train = 100 * rf_model.score(train_features[0:6, :], train_targets[0:6])
+print(f'Random forest prediction accuracy with training data = {score_train:.1f}%.')
+# Random forest prediction accuracy with testing data = 93.3%.
+# Random forest prediction accuracy with training data = 83.3%.
+
+model_predictions = rf_model.predict(test_features)
+
+# Print the confusion matrix
+print(confusion_matrix(test_targets, model_predictions))
+
+# Call confusion matrix
+confusion(t_test.reshape(t_test.shape[0]), model_predictions,
+          f'Predicting Adopters', ['FREE', 'PREMIUM'],
+          os.getcwd() + '//Randomtree.png')
+
+# Oversampling
+from imblearn.over_sampling import SMOTE
+
+over_sampler = SMOTE(random_state=12)
+smote_feature, smote_target = over_sampler.fit_resample(train_features, train_targets)
+
+hyper_params = {'bootstrap': True, 'max_samples': 600, 'oob_score': True, 'max_features': 'auto',
+                'criterion': 'gini', 'n_estimators': 1000, 'random_state': 42}
+# hyper_params = {'bootstrap': True, 'max_samples': 50000, 'oob_score': True, 'max_features': 'auto',
+#                 'criterion': 'gini', 'n_estimators': 1000, 'random_state': 42}
+my_classifier = RandomForestClassifier(**hyper_params)
+smote_model = my_classifier.fit(smote_feature, smote_target)
+
+# Score the oversampling
+score_test = 100 * smote_model.score(test_features, test_targets)
+print(f'Random forest prediction accuracy using SMOTE over-sampler = {score_test:.1f}%.')
+score_train = 100 * smote_model.score(smote_feature, smote_target)
+print(f'Random forest prediction accuracy using SMOTE over-sampler = {score_train:.1f}%.')
+# Random forest prediction accuracy using SMOTE over-sampler = 79.3%.
+# Random forest prediction accuracy using SMOTE over-sampler = 76.5%.
+
+smote_predictions = smote_model.predict(test_features)
+print(confusion_matrix(test_targets, smote_predictions))
+
+# Call confusion matrix
+confusion(test_targets.reshape(test_targets.shape[0]), predicted,
+          f'Predicting Adopters', ['FREE', 'PREMIUM'],
+          os.getcwd() + '//RandomtreeSMOTE.png')
+
+
+# Under sampling
+from imblearn.under_sampling import NearMiss
+under_sampler = NearMiss()
+nm_feature, nm_target = under_sampler.fit_resample(train_features, train_targets)
+
+hyper_params = {'bootstrap': True, 'max_samples': 300, 'oob_score': True, 'max_features': 'auto',
+                'criterion': 'gini', 'n_estimators': 1000, 'random_state': 42}
+# hyper_params = {'bootstrap': True, 'max_samples': 50000, 'oob_score': True, 'max_features': 'auto',
+#                 'criterion': 'gini', 'n_estimators': 1000, 'random_state': 42}
+my_classifier = RandomForestClassifier(**hyper_params)
+nm_model = my_classifier.fit(nm_feature, nm_target)
+
+# Score the Under sampling
+score_test = 100 * nm_model.score(test_features, test_targets)
+print(f'Random forest prediction accuracy using under-sampler (Near Miss) = {score_test:.1f}%.')
+score_train = 100 * smote_model.score(nm_feature, nm_target)
+print(f'Random forest prediction accuracy using under-sampler (Near Miss) = {score_train:.1f}%.')
+# Random forest prediction accuracy using under-sampler (Near Miss) = 60.7%.
+# Random forest prediction accuracy using under-sampler (Near Miss) = 74.8%.
+
+# Print the confusion matrix
+nm_predictions= nm_model.predict(test_features)
+print(confusion_matrix(test_targets, nm_predictions))
+
+confusion(test_targets.reshape(test_targets.shape[0]), predicted,
+          f'Predicting Adopters', ['FREE', 'PREMIUM'],
+          os.getcwd() + '//RandomtreeNM.png')
+
+
+# Delta 2 engagement, second prediction
+# use my_df1, drop "age", "good_country" and "males" this time because they have too many "NULL"
+# Add all the columns (features) from delta2 to one new column in the my_df1
+# This time, we only have on category so we use all the regressors
+my_df1['delta2engagement'] = my_df['delta2_songsListened'] + my_df['delta2_friend_cnt'] + \
+                            my_df['delta2_lovedTracks'] + my_df['delta2_posts'] + \
+                            my_df['delta2_playlists'] + my_df['delta2_shouts']
+
+print(my_df1['delta2engagement'])
+
+# KNN model for second prediction
+for i in range(3):
+    my_features = ['friend_cnt', 'avg_friend_age', 'avg_friend_male',
+                              'friend_country_cnt', 'subscriber_friend_cnt', 'songsListened', 'lovedTracks', 'posts',
+                              'playlists', 'shouts', 'delta1_friend_cnt', 'delta1_avg_friend_age',
+                              'delta1_avg_friend_male', 'delta1_friend_country_cnt', 'delta1_subscriber_friend_cnt',
+                              'delta1_songsListened', 'delta1_lovedTracks', 'delta1_posts', 'delta1_playlists', 'delta1_shouts',
+                              'delta1_good_country', 'adopter', 'tenure']
+    my_feature_names = random.sample(my_features, 5)
+    print(my_feature_names)
+    my_features = my_df1[my_feature_names].values
+    my_targets = my_df1['delta2engagement'].astype(int).to_numpy()
+    from sklearn.model_selection import train_test_split
+
+    f_train, f_test, t_train, t_test = train_test_split(my_features, my_targets,
+                                                    test_size=0.25, random_state=77)
+
+# Standerdize to make predictions about probabilities of the engagement
+    from sklearn.preprocessing import StandardScaler
+
+    sc_train = StandardScaler().fit(f_train)
+    f_train_sc = sc_train.transform(f_train)
+    sc_test = StandardScaler().fit(f_test)
+    f_test_sc = sc_test.transform(f_test)
+
+
+    from sklearn import neighbors
+
+    num_neighbors = 51
+    knn = neighbors.KNeighborsRegressor(n_neighbors=num_neighbors, metric='euclidean', weights='uniform')
+
+# Now, train the model by passing in the training features and targets.
+    knn.fit(f_train_sc, t_train)
+    score_test = 100 * knn.score(f_test_sc, t_test)
+    print(f'KNN ({num_neighbors} neighbors) prediction accuracy with test data = {score_test:.1f}%')
+    score_train = 100 * knn.score(f_train_sc, t_train)
+    print(f'KNN ({num_neighbors} neighbors) prediction accuracy with train data = {score_train:.1f}%')
+
+# ['posts', 'tenure', 'songsListened', 'delta1_subscriber_friend_cnt', 'avg_friend_age']
+# KNN (51 neighbors) prediction accuracy with test data = 11.7%
+# KNN (51 neighbors) prediction accuracy with train data = 15.8%
+# ['delta1_songsListened', 'lovedTracks', 'avg_friend_age', 'friend_country_cnt', 'posts']
+# KNN (51 neighbors) prediction accuracy with test data = 20.7%
+# KNN (51 neighbors) prediction accuracy with train data = 26.0%
+# ['tenure', 'avg_friend_male', 'delta1_avg_friend_age', 'avg_friend_age', 'delta1_good_country']
+# KNN (51 neighbors) prediction accuracy with test data = 2.1%
+# KNN (51 neighbors) prediction accuracy with train data = 5.6%
+
+# Decision Tree
+f_data = my_df1[['friend_cnt', 'avg_friend_age', 'avg_friend_male',
+                              'friend_country_cnt', 'subscriber_friend_cnt', 'songsListened', 'lovedTracks', 'posts',
+                              'playlists', 'shouts', 'delta1_friend_cnt', 'delta1_avg_friend_age',
+                              'delta1_avg_friend_male', 'delta1_friend_country_cnt', 'delta1_subscriber_friend_cnt',
+                              'delta1_songsListened', 'delta1_lovedTracks', 'delta1_posts', 'delta1_playlists', 'delta1_shouts',
+                              'delta1_good_country', 'adopter', 'tenure']].values
+
+t_data = my_df1['delta2engagement'].to_numpy().reshape(my_df.shape[0], 1)
+
+f_train, f_test, t_train, t_test = train_test_split(f_data, t_data, test_size=0.25, random_state=77)
+
+from sklearn.tree import DecisionTreeRegressor
+
+dtr_estimator = DecisionTreeRegressor(random_state=23, min_samples_leaf=20, ccp_alpha=50)
+# dtr_estimator = DecisionTreeRegressor(random_state=23, min_samples_leaf=20, ccp_alpha=50000)
+
+trained_dt_model = dtr_estimator.fit(f_train, t_train)
+print('Score = {:,.1%}'.format(trained_dt_model.score(f_test, t_test)))
+
+print('Score = {:,.1%}'.format(trained_dt_model.score(f_train, t_train)))
+# Score = 18.8%
+# Score = 33.5%
+
+# Random Forest
+
+my_features = my_df1[['friend_cnt', 'avg_friend_age', 'avg_friend_male',
+                              'friend_country_cnt', 'subscriber_friend_cnt', 'songsListened', 'lovedTracks', 'posts',
+                              'playlists', 'shouts', 'delta1_friend_cnt', 'delta1_avg_friend_age',
+                              'delta1_avg_friend_male', 'delta1_friend_country_cnt', 'delta1_subscriber_friend_cnt',
+                              'delta1_songsListened', 'delta1_lovedTracks', 'delta1_posts', 'delta1_playlists', 'delta1_shouts',
+                              'delta1_good_country', 'adopter', 'tenure']].values
+
+my_targets = my_df1['delta2engagement'].to_numpy()
+
+from sklearn.model_selection import train_test_split
+train_features, test_features, train_targets, test_targets = train_test_split(my_features, my_targets,
+                                                                              test_size=0.25, random_state=77)
+
+from sklearn.tree import DecisionTreeRegressor
+dt_regressor = DecisionTreeRegressor(max_depth=None, ccp_alpha=25, min_samples_leaf=10,
+                                       min_samples_split=20, random_state=72)
+# dt_regressor = DecisionTreeRegressor(max_depth=None, ccp_alpha=25, min_samples_leaf=10,
+#                                        min_samples_split=20, random_state=72)
+
+dt_model = dt_regressor.fit(train_features, train_targets)
+score_test = 100 * dt_model.score(test_features, test_targets)
+print(f'This model developed using the Decision Tree algorithm is = {score_test:.1f}%')
+
+from sklearn.ensemble import RandomForestRegressor
+
+hyper_params = {'bootstrap': True, 'max_samples': 600, 'oob_score': True, 'max_features': 'auto',
+                'n_estimators': 1000, 'random_state': 42}
+#hyper_params = {'bootstrap': True, 'max_samples': 50000, 'oob_score': True, 'max_features': 'auto',
+                # 'n_estimators': 1000, 'random_state': 42}
+
+my_regressor = RandomForestRegressor(**hyper_params)
+# The above **hyper_params unpacking operation is the same as the following:
+print(my_regressor.get_params())
+rf_model = my_regressor.fit(train_features, train_targets)
+score_test = 100 * rf_model.score(test_features, test_targets)
+print(f'Random forest prediction accuracy with testing data = {score_test:.1f}%.')
+score_train = 100 * rf_model.score(train_features, train_targets)
+print(f'Random forest prediction accuracy with testing data = {score_train:.1f}%.')
+# Random forest prediction accuracy with testing data = 21.8%.
+# Random forest prediction accuracy with testing data = 26.2%.
+
+# Linear Regression
+
+my_features = my_df1[['friend_cnt', 'avg_friend_age', 'avg_friend_male',
+                              'friend_country_cnt', 'subscriber_friend_cnt', 'songsListened', 'lovedTracks', 'posts',
+                              'playlists', 'shouts', 'delta1_friend_cnt', 'delta1_avg_friend_age',
+                              'delta1_avg_friend_male', 'delta1_friend_country_cnt', 'delta1_subscriber_friend_cnt',
+                              'delta1_songsListened', 'delta1_lovedTracks', 'delta1_posts', 'delta1_playlists', 'delta1_shouts',
+                              'delta1_good_country', 'adopter', 'tenure']].values
+
+my_targets = my_df1['delta2engagement'].to_numpy()
+
+training_features, testing_features, training_targets, testing_targets = train_test_split(my_features, my_targets, test_size=0.2, random_state=25)
+
+from sklearn.linear_model import LinearRegression
+
+lgr = LinearRegression(fit_intercept=True)
+model = lgr.fit(training_features, training_targets)
+
+results = model.predict(testing_features)
+
+score = 100.0 * model.score(testing_features, testing_targets)
+print(f'Linear Regression Model Score = {score:5.1f}%')
+
+score = 100.0 * model.score(training_features, training_targets)
+print(f'Linear Regression Model Score = {score:5.1f}%')
+# Linear Regression Model Score =  23.8%
+# Linear Regression Model Score =  19.9%
